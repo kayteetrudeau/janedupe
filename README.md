@@ -157,8 +157,13 @@ function parseIcsDate(line) {
 
 <img width="701" height="276" alt="Screenshot 2026-09-10 at 12 11 18" src="https://github.com/user-attachments/assets/045ab34e-d39e-4748-978c-42d76ebacdf2" />
 
-3. Hover over the alarm clock icon on the left sidebar, then click "Triggers" on the popup menu. Configure it as you see fit - I have mine set to every 15 mins.
+Replace the text in the quotation marks with your actual URL.
 
-4. Test by hovering over the `< >` icon in the sidebar and going to "Editor" and clicking the "Run" button on the top bar. If it works, it will tell you how many instances it added to your calendar.
+3. Hover over the alarm clock icon on the left sidebar, then click "Triggers" on the popup menu. It will ask you to save your script: please do so now.
 
-   Note: It will not remove cancelled events, so you'll still need to manually remove those from your calendar.
+   Configure it as you see fit - I have mine set to every 15 mins.
+
+5. Test by hovering over the `< >` icon in the sidebar and going to "Editor" and clicking the "Run" button on the top bar. If it works, it will tell you how many instances it added to your calendar.
+
+
+Note: It will not remove cancelled events, so you'll still need to manually remove those from your calendar.
