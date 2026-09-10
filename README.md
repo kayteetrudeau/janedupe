@@ -1,5 +1,5 @@
 # janedupe
-Automatically duplicates subscribed Jane calendar to Google calendar so time gets blocked.
+Automatically copies subscribed Jane calendar to Google calendar so time gets blocked.
 
 The use case is this: I have a google calendar that syncs with jane, so anytime I put an event in that (appointment through private practice, for example) it blocks that time out in Jane. However, the inverse doesn't happen, even if you're subscribed to the Jane calendar - it just adds another calendar view to your current Google one. So you need to add things to that main Google calendar manually when you add a Jane appointment to properly block off the time. 
 
