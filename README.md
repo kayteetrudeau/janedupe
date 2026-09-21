@@ -159,15 +159,7 @@ function parseIcsDate(line) {
 
 Replace the text in the quotation marks with your actual URL.
 
-If you have multiple Jane accounts you want to add to your Google Calendar, I HAVE NOT TESTED THIS but I believe it works like this, where `const ICS URL = ...`, you replace that line with this 
-
-```
-const ICS_URLS = [
-    "YOUR_FIRST_ICS_URL_HERE",
-    "YOUR_SECOND_ICS_URL_HERE",
-    "YOUR_THIRD_ICS_URL_HERE"
-  ];
-```
+If you have multiple Jane accounts, you'll need to make a new Google Scripts project for each one you're subscribed to and it will work (it's been tested)
 
 3. Hover over the alarm clock icon on the left sidebar, then click "Triggers" on the popup menu. It will ask you to save your script: please do so now.
 
