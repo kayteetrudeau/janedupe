@@ -226,7 +226,7 @@ function syncJaneAppointments() {
           return;
         }
 
-        // Create new appointment
+       // Create new appointment
         const newEvent = calendar.createEvent(
           summary,
           startDate,
@@ -234,7 +234,7 @@ function syncJaneAppointments() {
           { description: marker }
         );
 
-        newEvent.removeAllReminders();
+        newEvent.addPopupReminder(30); // Sets a notification 30 minutes before
         properties.setProperty(propertyKey, 'copied');
         eventsByMarker.set(marker, [newEvent]);
         created++;
