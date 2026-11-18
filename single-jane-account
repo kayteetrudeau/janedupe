@@ -1,9 +1,8 @@
-Remember to sub out your ICS URL (the calendar URL you're subscribed to) for the generic line at `const JANE_ICAL_URL`, and edit the name of the worksite under the `const MARKER_PREFIX` 
-
-```
 /*
  * SINGLE JANE TO GOOGLE CALENDAR SYNC (WITH ORIGINAL TITLES)
- *
+
+* Remember to sub out your ICS URL (the calendar URL you're subscribed to) for the generic line at `const JANE_ICAL_URL`, and edit the name of the worksite under the `const MARKER_PREFIX` 
+
  * Imports appointments from a single Jane calendar into Google Calendar,
  * using the real appointment titles from Jane.
  *
@@ -293,4 +292,4 @@ function parseIcalDate(info) {
 
   return Utilities.parseDate(value, timezone, "yyyyMMdd'T'HHmmss");
 }
-```
+
