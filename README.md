@@ -10,162 +10,357 @@ The use case is this: I have a google calendar that syncs with jane, so anytime 
 Click "New Project" and paste this in the window:
 
 ```
-function syncIcsToGoogleCalendar() {
-  // 1. CONFIGURATION: Replace these with your actual details
-  const ICS_URL = "YOUR ICS URL"; 
-  const TARGET_CALENDAR_ID = "primary"; // Use "primary" or a specific Calendar ID (e.g., 'abc123@group.calendar.google.com')
-  const DAYS_TO_SYNC = 30; // How many days ahead to pull events
-  
-  const targetCal = CalendarApp.getCalendarById(TARGET_CALENDAR_ID);
-  if (!targetCal) {
-    Logger.log("Target calendar not found. Check your CALENDAR_ID.");
+/*
+ * MULTI-JANE TO GOOGLE CALENDAR SYNC
+ *
+ * Remember to sub out your ICS URL (the calendar URL you're subscribed to) for the generic line at `const JANE_ICAL_URL`, and edit the name of the worksite under the `const MARKER_PREFIX` 
+ *
+ * Imports appointments from multiple Jane calendars into a single Google Calendar.
+ * 
+ * Features:
+ * - Easily add as many Jane accounts as you want in the CONFIG section
+ * - Uses real Jane appointment titles
+ * - Updates rescheduled appointments automatically
+ * - Removes cancelled appointments after 3 consecutive successful missing checks
+ * - Prevents duplicate imports and respects manually deleted events
+ */
+
+// ==========================================
+// CONFIGURATION: Add as many accounts as you want here!
+/*
+You'd do this by making it look like this:
+
+const JANE_ACCOUNTS = [
+  {
+    name: 'Clinic One',
+    url: 'https://...',
+    markerPrefix: 'Jane UID C1: ',
+    key: 'clinic_one'
+  },
+  {
+    name: 'Clinic Two',
+    url: 'https://...',
+    markerPrefix: 'Jane UID C2: ',
+    key: 'clinic_two'
+  },
+  {
+    name: 'Clinic Three', // <--- Just add new ones here!
+    url: 'https://...',
+    markerPrefix: 'Jane UID C3: ',
+    key: 'clinic_three'
+  }
+];
+
+And so on, depending on how many worksites you have
+*/
+// ==========================================
+
+const TARGET_CALENDAR_ID = 'GOOGLE CALENDAR ACCOUNT'S EMAIL ADDRESS'; // Where all appointments should land
+
+const JANE_ACCOUNTS = [
+  {
+    name: 'Clinic 1',
+    url: 'ICS URL',
+    markerPrefix: 'WORKSITE NAME: ',
+    key: 'clinic_one'
+  }
+];
+
+
+// ==========================================
+// MAIN SYNC FUNCTION
+// ==========================================
+
+function syncJaneAppointments() {
+
+  const lock = LockService.getScriptLock();
+
+  if (!lock.tryLock(1000)) {
+    Logger.log('Another sync is already running. Skipping.');
     return;
   }
 
-  // 2. Fetch the raw ICS file directly
-  let response;
   try {
-    response = UrlFetchApp.fetch(ICS_URL);
-  } catch (e) {
-    Logger.log("Failed to fetch ICS feed: " + e.message);
-    return;
-  }
 
-  const icsData = response.getContentText();
-  
-  // 3. Simple ICS Parser for VEVENT blocks
-  const events = parseIcsEvents(icsData);
-  
-  const now = new Date();
-  const futureCutoff = new Date(now.getTime() + (DAYS_TO_SYNC * 24 * 60 * 60 * 1000));
-  
-  // Get existing target events to prevent creating duplicates
-  const existingEvents = targetCal.getEvents(now, futureCutoff);
+    const now = new Date();
+    const properties = PropertiesService.getScriptProperties();
 
-  let createdCount = 0;
+    // Validate and load target calendar
+    const calendar = CalendarApp.getCalendarById(TARGET_CALENDAR_ID);
+    if (!calendar) {
+      Logger.log("Target calendar not found. Check your TARGET_CALENDAR_ID.");
+      return;
+    }
 
-  events.forEach(event => {
-    // Filter to only sync future events within our cutoff window
-    if (event.startDate >= now && event.startDate <= futureCutoff) {
+    // Read destination calendar once for all accounts up to 2035
+    const calendarEvents = calendar.getEvents(now, new Date(2035, 0, 1));
+
+    // Index existing imported events by their unique markers
+    const eventsByMarker = new Map();
+
+    calendarEvents.forEach(event => {
+      const description = event.getDescription() || '';
       
-      // Check if an event with the same title and start time already exists
-      const isDuplicate = existingEvents.some(existing => {
-        return existing.getTitle() === event.summary && 
-               existing.getStartTime().getTime() === event.startDate.getTime();
-      });
+      JANE_ACCOUNTS.forEach(account => {
+        const position = description.indexOf(account.markerPrefix);
+        if (position === -1) return;
 
-      if (!isDuplicate) {
-        if (event.isAllDay) {
-          targetCal.createAllDayEvent(event.summary, event.startDate, {
-            description: event.description,
-            location: event.location
-          });
-        } else {
-          targetCal.createEvent(event.summary, event.startDate, event.endDate, {
-            description: event.description,
-            location: event.location
-          });
+        const uid = description.substring(position + account.markerPrefix.length);
+        if (!uid) return;
+
+        const marker = account.markerPrefix + uid;
+        if (!eventsByMarker.has(marker)) {
+          eventsByMarker.set(marker, []);
         }
-        createdCount++;
-      }
-    }
-  });
-
-  Logger.log(`Sync complete. Created ${createdCount} new events.`);
-}
-
-// Helper function to extract event fields from raw ICS text
-function parseIcsEvents(icsText) {
-  const events = [];
-  // Unfold lines split by line breaks and spaces (ICS standard folding)
-  const unfolded = icsText.replace(/\r\n[ \t]/g, '');
-  const vevents = unfolded.split("BEGIN:VEVENT");
-
-  for (let i = 1; i < vevents.length; i++) {
-    const block = vevents[i].split("END:VEVENT")[0];
-    
-    const summary = getIcsValue(block, "SUMMARY");
-    const description = getIcsValue(block, "DESCRIPTION");
-    const location = getIcsValue(block, "LOCATION");
-    
-    const dtStartRaw = getIcsRawLine(block, "DTSTART");
-    const dtEndRaw = getIcsRawLine(block, "DTEND");
-
-    if (!dtStartRaw || !summary) continue;
-
-    const startParsed = parseIcsDate(dtStartRaw);
-    const endParsed = dtEndRaw ? parseIcsDate(dtEndRaw) : null;
-
-    if (startParsed) {
-      events.push({
-        summary: summary,
-        description: description,
-        location: location,
-        startDate: startParsed.date,
-        endDate: endParsed ? endParsed.date : startParsed.date,
-        isAllDay: startParsed.isAllDay
+        eventsByMarker.get(marker).push(event);
       });
-    }
+    });
+
+    // Loop through every account configured in JANE_ACCOUNTS
+    JANE_ACCOUNTS.forEach(account => {
+      
+      Logger.log('------------------------------');
+      Logger.log('Processing: ' + account.name);
+
+      if (!account.url || (!account.url.startsWith('https://') && !account.url.startsWith('http://')) || account.url.includes('PASTE_')) {
+        Logger.log('Skipping ' + account.name + ': URL is missing or invalid.');
+        return;
+      }
+
+      let response;
+      try {
+        response = UrlFetchApp.fetch(account.url);
+      } catch (e) {
+        Logger.log('Failed to fetch feed for ' + account.name + ': ' + e.message);
+        return;
+      }
+
+      if (response.getResponseCode() !== 200) {
+        Logger.log('Failed to fetch ' + account.name + ', status code: ' + response.getResponseCode());
+        return;
+      }
+
+      const ics = response.getContentText();
+      if (!ics.includes('BEGIN:VCALENDAR') || !ics.includes('END:VCALENDAR')) {
+        Logger.log('Invalid calendar format for ' + account.name);
+        return;
+      }
+
+      const unfolded = ics.replace(/\r?\n[ \t]/g, '');
+      const rawEvents = unfolded.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) || [];
+
+      Logger.log('Found ' + rawEvents.length + ' appointments in ' + account.name + ' feed.');
+
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      let deleted = 0;
+
+      const presentUids = new Set();
+      const missingKey = uid => 'missing_' + account.key + '_' + uid;
+
+      rawEvents.forEach(eventText => {
+        const uid = getIcalValue(eventText, 'UID');
+        if (!uid) return;
+
+        presentUids.add(uid);
+        properties.deleteProperty(missingKey(uid));
+
+        const summary = getIcalValue(eventText, 'SUMMARY') || 'Appointment';
+        const startInfo = getIcalProperty(eventText, 'DTSTART');
+        const endInfo = getIcalProperty(eventText, 'DTEND');
+
+        if (!startInfo || !endInfo) return;
+
+        const startDate = parseIcalDate(startInfo);
+        const endDate = parseIcalDate(endInfo);
+
+        if (!startDate || !endDate) return;
+
+        const marker = account.markerPrefix + uid;
+        const propertyKey = account.key + '_' + uid;
+        const existingEvents = eventsByMarker.get(marker) || [];
+
+        // Keep past appointments untouched
+        if (startDate <= now) {
+          skipped++;
+          return;
+        }
+
+        // Update existing appointment if times or title changed
+        if (existingEvents.length > 0) {
+          const existing = existingEvents[0];
+
+          const needsTimeUpdate = (
+            existing.getStartTime().getTime() !== startDate.getTime() ||
+            existing.getEndTime().getTime() !== endDate.getTime()
+          );
+
+          const needsTitleUpdate = existing.getTitle() !== summary;
+
+          if (needsTimeUpdate || needsTitleUpdate) {
+            if (needsTimeUpdate) {
+              existing.setTime(startDate, endDate);
+            }
+            if (needsTitleUpdate) {
+              existing.setTitle(summary);
+            }
+            updated++;
+          } else {
+            skipped++;
+          }
+
+          // Clean up duplicate copies with the same UID
+          for (let i = 1; i < existingEvents.length; i++) {
+            existingEvents[i].deleteEvent();
+            deleted++;
+          }
+
+          properties.setProperty(propertyKey, 'copied');
+          return;
+        }
+
+        // Respect manually deleted events
+        if (properties.getProperty(propertyKey)) {
+          skipped++;
+          return;
+        }
+
+        // Create new appointment
+        const newEvent = calendar.createEvent(
+          summary,
+          startDate,
+          endDate,
+          { description: marker }
+        );
+
+        newEvent.removeAllReminders();
+        properties.setProperty(propertyKey, 'copied');
+        eventsByMarker.set(marker, [newEvent]);
+        created++;
+      });
+
+      // Check for cancelled / missing events for this specific account
+      if (rawEvents.length > 0) {
+        eventsByMarker.forEach((matchingEvents, marker) => {
+          if (!marker.startsWith(account.markerPrefix)) return;
+
+          const uid = marker.substring(account.markerPrefix.length);
+          if (!uid || presentUids.has(uid)) return;
+
+          const propertyKey = account.key + '_' + uid;
+          const countKey = missingKey(uid);
+
+          const previousCount = Number(properties.getProperty(countKey) || 0);
+          const newCount = previousCount + 1;
+
+          Logger.log(account.name + ' - Missing UID: ' + uid + ', consecutive checks: ' + newCount);
+
+          if (newCount >= 3) {
+            matchingEvents.forEach(event => {
+              if (event.getStartTime() > now) {
+                event.deleteEvent();
+                deleted++;
+              }
+            });
+
+            properties.deleteProperty(propertyKey);
+            properties.deleteProperty(countKey);
+            eventsByMarker.delete(marker);
+          } else {
+            properties.setProperty(countKey, String(newCount));
+          }
+        });
+      }
+
+      Logger.log(account.name + ' Sync Results -> Created: ' + created + ', Updated: ' + updated + ', Skipped: ' + skipped + ', Deleted: ' + deleted);
+
+    });
+
+  } finally {
+    lock.releaseLock();
   }
-  return events;
+
 }
 
-function getIcsValue(block, key) {
-  const match = block.match(new RegExp(`^${key}(?:;[^:]*)?:(.*)$`, "m"));
-  return match ? match[1].trim().replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\n/g, '\n') : "";
+
+// ==========================================
+// ICAL HELPER FUNCTIONS
+// ==========================================
+
+function getIcalProperty(eventText, propertyName) {
+  const regex = new RegExp('^' + propertyName + '((?:;[^:]*)?):(.*)$', 'm');
+  const match = eventText.match(regex);
+  return match ? {
+    parameters: match[1],
+    value: match[2].trim().replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\n/g, '\n')
+  } : null;
 }
 
-function getIcsRawLine(block, key) {
-  const match = block.match(new RegExp(`^${key}(.*)$`, "m"));
-  return match ? match[0] : null;
+function getIcalValue(eventText, propertyName) {
+  const property = getIcalProperty(eventText, propertyName);
+  return property ? property.value : null;
 }
 
-function parseIcsDate(line) {
-  const parts = line.split(":");
-  if (parts.length < 2) return null;
-  
-  const meta = parts[0];
-  const value = parts[1].trim();
-  const isAllDay = meta.includes("VALUE=DATE") || value.length === 8;
+function parseIcalDate(info) {
+  const value = info.value;
 
-  if (isAllDay) {
-    const year = parseInt(value.substring(0, 4), 10);
-    const month = parseInt(value.substring(4, 6), 10) - 1;
-    const day = parseInt(value.substring(6, 8), 10);
-    return { date: new Date(year, month, day), isAllDay: true };
-  } else {
-    // Basic ISO 8601 UTC parse (YYYYMMDDTHHMMSSZ)
-    const year = parseInt(value.substring(0, 4), 10);
-    const month = parseInt(value.substring(4, 6), 10) - 1;
-    const day = parseInt(value.substring(6, 8), 10);
-    const hour = parseInt(value.substring(9, 11), 10) || 0;
-    const min = parseInt(value.substring(11, 13), 10) || 0;
-    const sec = parseInt(value.substring(13, 15), 10) || 0;
-    
-    // Assume UTC if ends in Z
-    const date = value.endsWith("Z") 
-      ? new Date(Date.UTC(year, month, day, hour, min, sec))
-      : new Date(year, month, day, hour, min, sec);
-
-    return { date: date, isAllDay: false };
+  if (/^\d{8}$/.test(value)) {
+    return Utilities.parseDate(value, 'UTC', 'yyyyMMdd');
   }
+
+  if (value.endsWith('Z')) {
+    return Utilities.parseDate(value, 'UTC', "yyyyMMdd'T'HHmmss'Z'");
+  }
+
+  const tzMatch = info.parameters.match(/TZID=([^;:]+)/);
+  const timezone = tzMatch ? tzMatch[1] : Session.getScriptTimeZone();
+
+  return Utilities.parseDate(value, timezone, "yyyyMMdd'T'HHmmss");
 }
 ```
 
-2. On the `const ICS_URL = "YOUR ICS URL"; ` line, this ICS URL refers to URL you'll see when you click "Settings" from the three dots on the subscribed calendar:
+2. Configure your Target Calendar:
+On the const TARGET_CALENDAR_ID = '...'; line at the top, replace the placeholder with the actual Google email address under which your calendar lives (or leave it as your primary calendar email).
+
+3. Add your Jane iCal Feed URL(s):
+Look at the const JANE_ACCOUNTS section. For each Jane account you want to sync, update the following fields:
+
+url: Paste your Jane iCal feed URL inside the quotation marks. (Note: You can grab your iCal feed URL from your Jane practitioner profile under your settings).
+
 <img width="393" height="353" alt="Screenshot 2026-09-10 at 12 10 36" src="https://github.com/user-attachments/assets/2fb58867-6b43-4b94-88ef-b626019c0bcf" />
 
 <img width="701" height="276" alt="Screenshot 2026-09-10 at 12 11 18" src="https://github.com/user-attachments/assets/045ab34e-d39e-4748-978c-42d76ebacdf2" />
 
-Replace the text in the quotation marks with your actual URL.
+markerPrefix: Give it a unique work site label (e.g., 'Clinic One: ' or 'Private Practice: '). This is what the script writes into the description to track reschedules and cancellations.
 
-If you have multiple Jane accounts, you'll need to make a new Google Scripts project for each one you're subscribed to and it will work (it's been tested)
+If you only have one clinic, you can delete the second block in the array, or leave it and add more blocks if you have 3, 4, or more accounts:
+`
+const JANE_ACCOUNTS = [
+  {
+    name: 'Clinic One',
+    url: 'https://your-clinic.janeapp.com/...',
+    markerPrefix: 'Clinic One: ',
+    key: 'clinic_one'
+  }
+];
+`
+4. Set up the Automatic Trigger:
 
-3. Hover over the alarm clock icon on the left sidebar, then click "Triggers" on the popup menu. It will ask you to save your script: please do so now.
+Click on the alarm clock icon on the left sidebar of the Apps Script editor, then click "Triggers".
 
-   Configure it as you see fit - I have mine set to every 15 mins.
+Click "+ Add Trigger" in the bottom right.
 
-5. Test by hovering over the `< >` icon in the sidebar and going to "Editor" and clicking the "Run" button on the top bar. If it works, it will tell you how many instances it added to your calendar.
+Choose syncJaneAppointments to run, select "Time-driven", and set it to run as frequently as you like (e.g., Every 15 minutes or Every hour).
 
+It will prompt you to authorize the script permissions—follow the prompts to allow it to access your calendar.
 
-Note: It will not remove cancelled events, so you'll still need to manually remove those from your calendar.
+5. Test Your Script:
+
+Go back to your code by clicking the < > icon (Editor) on the left sidebar.
+
+Click the "Run" button on the top toolbar.
+
+Check the Execution Log at the bottom; if it works successfully, it will print out how many appointments it found, created, or updated!
+
+Note on Cancellations & Reschedules: Unlike older scripts, this version automatically handles changes. If an appointment is rescheduled in Jane, the script updates the time in Google Calendar. If an appointment is canceled in Jane, the script will automatically remove it from your Google Calendar after 3 consecutive successful checks (to prevent accidental deletions from brief feed glitches).
