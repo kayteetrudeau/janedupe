@@ -1,0 +1,469 @@
+```
+
+/*
+ * GENERIC JANE TO GOOGLE CALENDAR SYNC
+ *
+ * Imports appointments from two Jane calendars
+ * into one Google Calendar.
+ *
+ * Features:
+ * - Imports appointments from two clinics
+ * - Updates rescheduled appointments
+ * - Removes cancelled appointments after
+ *   3 consecutive successful missing checks
+ * - Preserves past appointments
+ * - Prevents duplicate imports
+ * - Does not recreate manually deleted events
+ * - Prevents overlapping sync executions
+ */
+
+// ==========================================
+// CONFIGURATION
+// ==========================================
+
+// Add your own private Jane iCal feed URLs.
+
+const CLINIC_ONE_URL = 'PASTE_FIRST_JANE_ICAL_URL_HERE';
+const CLINIC_TWO_URL = 'PASTE_SECOND_JANE_ICAL_URL_HERE';
+
+// Customize the clinic names here.
+const CLINIC_ONE_NAME = 'Clinic One';
+const CLINIC_TWO_NAME = 'Clinic Two';
+
+
+// ==========================================
+// MAIN SYNC FUNCTION
+// ==========================================
+
+function syncAllJaneAppointments() {
+
+  const lock = LockService.getScriptLock();
+
+  if (!lock.tryLock(1000)) {
+    Logger.log('Another sync is already running. Skipping.');
+    return;
+  }
+
+  try {
+
+    const now = new Date();
+    const calendar = CalendarApp.getDefaultCalendar();
+    const properties = PropertiesService.getScriptProperties();
+
+    const sources = [
+      {
+        url: CLINIC_ONE_URL,
+        clinicKey: 'clinic_one',
+        eventTitle: CLINIC_ONE_NAME + ' – Busy',
+        markerPrefix: 'Clinic One Jane UID: '
+      },
+      {
+        url: CLINIC_TWO_URL,
+        clinicKey: 'clinic_two',
+        eventTitle: CLINIC_TWO_NAME + ' – Busy',
+        markerPrefix: 'Clinic Two Jane UID: '
+      }
+    ];
+
+    // --------------------------------------
+    // FETCH AND VALIDATE BOTH FEEDS
+    // --------------------------------------
+
+    const preparedSources = [];
+
+    sources.forEach(source => {
+
+      try {
+
+        if (
+          !source.url ||
+          !source.url.startsWith('https://') ||
+          source.url.includes('PASTE_')
+        ) {
+          throw new Error('Feed URL is missing or invalid.');
+        }
+
+        const response = UrlFetchApp.fetch(source.url);
+        const status = response.getResponseCode();
+        const ics = response.getContentText();
+
+        if (
+          status !== 200 ||
+          !ics.includes('BEGIN:VCALENDAR') ||
+          !ics.includes('END:VCALENDAR')
+        ) {
+          throw new Error('Calendar feed could not be validated.');
+        }
+
+        const unfolded = ics.replace(/\r?\n[ \t]/g, '');
+
+        const events =
+          unfolded.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) || [];
+
+        preparedSources.push({
+          ...source,
+          events: events
+        });
+
+        Logger.log(
+          source.clinicKey + ': ' +
+          events.length + ' appointments found.'
+        );
+
+      } catch (error) {
+
+        Logger.log(
+          source.clinicKey + ' feed failed: ' + error.message
+        );
+
+      }
+
+    });
+
+    if (preparedSources.length === 0) {
+      throw new Error(
+        'Neither feed could be loaded. No calendar changes made.'
+      );
+    }
+
+
+    // --------------------------------------
+    // READ DESTINATION CALENDAR ONCE
+    // --------------------------------------
+
+    const calendarEvents = calendar.getEvents(
+      now,
+      new Date(2035, 0, 1)
+    );
+
+
+    // --------------------------------------
+    // INDEX EXISTING IMPORTED EVENTS
+    // --------------------------------------
+
+    const eventsByMarker = new Map();
+
+    calendarEvents.forEach(event => {
+
+      const description = event.getDescription() || '';
+
+      preparedSources.forEach(source => {
+
+        const position = description.indexOf(
+          source.markerPrefix
+        );
+
+        if (position === -1) return;
+
+        const uid = description.substring(
+          position + source.markerPrefix.length
+        );
+
+        if (!uid) return;
+
+        const marker = source.markerPrefix + uid;
+
+        if (!eventsByMarker.has(marker)) {
+          eventsByMarker.set(marker, []);
+        }
+
+        eventsByMarker.get(marker).push(event);
+
+      });
+
+    });
+
+
+    // --------------------------------------
+    // PROCESS EACH CLINIC
+    // --------------------------------------
+
+    preparedSources.forEach(source => {
+
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      let deleted = 0;
+
+      const presentUids = new Set();
+
+      const missingKey = uid =>
+        'missing_' + source.clinicKey + '_' + uid;
+
+      source.events.forEach(eventText => {
+
+        const uid = getIcalValue(eventText, 'UID');
+
+        if (!uid) return;
+
+        presentUids.add(uid);
+
+        // Reset missing counter if appointment reappears.
+        properties.deleteProperty(missingKey(uid));
+
+        const startInfo = getIcalProperty(
+          eventText,
+          'DTSTART'
+        );
+
+        const endInfo = getIcalProperty(
+          eventText,
+          'DTEND'
+        );
+
+        if (!startInfo || !endInfo) return;
+
+        const startDate = parseIcalDate(startInfo);
+        const endDate = parseIcalDate(endInfo);
+
+        if (!startDate || !endDate) return;
+
+        const marker = source.markerPrefix + uid;
+        const propertyKey = source.clinicKey + '_' + uid;
+
+        const existingEvents =
+          eventsByMarker.get(marker) || [];
+
+
+        // ----------------------------------
+        // KEEP PAST APPOINTMENTS
+        // ----------------------------------
+
+        if (startDate <= now) {
+          skipped++;
+          return;
+        }
+
+
+        // ----------------------------------
+        // UPDATE EXISTING APPOINTMENT
+        // ----------------------------------
+
+        if (existingEvents.length > 0) {
+
+          const existing = existingEvents[0];
+
+          if (
+            existing.getStartTime().getTime() !==
+              startDate.getTime() ||
+            existing.getEndTime().getTime() !==
+              endDate.getTime()
+          ) {
+
+            existing.setTime(startDate, endDate);
+            updated++;
+
+          } else {
+
+            skipped++;
+
+          }
+
+          // Remove duplicate copies with the same UID.
+          for (let i = 1; i < existingEvents.length; i++) {
+            existingEvents[i].deleteEvent();
+            deleted++;
+          }
+
+          properties.setProperty(propertyKey, 'copied');
+
+          return;
+
+        }
+
+
+        // ----------------------------------
+        // RESPECT MANUALLY DELETED EVENTS
+        // ----------------------------------
+
+        if (properties.getProperty(propertyKey)) {
+          skipped++;
+          return;
+        }
+
+
+        // ----------------------------------
+        // CREATE NEW APPOINTMENT
+        // ----------------------------------
+
+        const newEvent = calendar.createEvent(
+          source.eventTitle,
+          startDate,
+          endDate,
+          { description: marker }
+        );
+
+        newEvent.removeAllReminders();
+
+        properties.setProperty(propertyKey, 'copied');
+
+        eventsByMarker.set(marker, [newEvent]);
+
+        created++;
+
+      });
+
+
+      // --------------------------------------
+      // CHECK FOR CANCELLED / MISSING EVENTS
+      // --------------------------------------
+
+      // An empty feed is not enough evidence
+      // to delete existing calendar appointments.
+
+      if (source.events.length > 0) {
+
+        eventsByMarker.forEach((matchingEvents, marker) => {
+
+          if (!marker.startsWith(source.markerPrefix)) {
+            return;
+          }
+
+          const uid = marker.substring(
+            source.markerPrefix.length
+          );
+
+          if (!uid || presentUids.has(uid)) return;
+
+          const propertyKey = source.clinicKey + '_' + uid;
+          const countKey = missingKey(uid);
+
+          const previousCount = Number(
+            properties.getProperty(countKey) || 0
+          );
+
+          const newCount = previousCount + 1;
+
+          Logger.log(
+            source.clinicKey +
+            ' missing UID: ' + uid +
+            ', consecutive checks: ' + newCount
+          );
+
+
+          // Delete only after 3 consecutive checks.
+          if (newCount >= 3) {
+
+            matchingEvents.forEach(event => {
+
+              if (event.getStartTime() > now) {
+                event.deleteEvent();
+                deleted++;
+              }
+
+            });
+
+            properties.deleteProperty(propertyKey);
+            properties.deleteProperty(countKey);
+
+            eventsByMarker.delete(marker);
+
+          } else {
+
+            properties.setProperty(
+              countKey,
+              String(newCount)
+            );
+
+          }
+
+        });
+
+      }
+
+
+      // --------------------------------------
+      // LOG RESULTS
+      // --------------------------------------
+
+      Logger.log('------------------------------');
+      Logger.log(source.clinicKey + ' sync complete.');
+      Logger.log('Created: ' + created);
+      Logger.log('Updated: ' + updated);
+      Logger.log('Skipped: ' + skipped);
+      Logger.log('Deleted: ' + deleted);
+      Logger.log('------------------------------');
+
+    });
+
+  } finally {
+
+    lock.releaseLock();
+
+  }
+
+}
+
+
+// ==========================================
+// ICAL HELPER FUNCTIONS
+// ==========================================
+
+function getIcalProperty(eventText, propertyName) {
+
+  const regex = new RegExp(
+    '^' + propertyName + '((?:;[^:]*)?):(.*)$',
+    'm'
+  );
+
+  const match = eventText.match(regex);
+
+  return match ? {
+    parameters: match[1],
+    value: match[2].trim()
+  } : null;
+
+}
+
+
+function getIcalValue(eventText, propertyName) {
+
+  const property = getIcalProperty(
+    eventText,
+    propertyName
+  );
+
+  return property ? property.value : null;
+
+}
+
+
+function parseIcalDate(info) {
+
+  const value = info.value;
+
+  if (/^\d{8}$/.test(value)) {
+
+    return Utilities.parseDate(
+      value,
+      'UTC',
+      'yyyyMMdd'
+    );
+
+  }
+
+  if (value.endsWith('Z')) {
+
+    return Utilities.parseDate(
+      value,
+      'UTC',
+      "yyyyMMdd'T'HHmmss'Z'"
+    );
+
+  }
+
+  const tzMatch = info.parameters.match(/TZID=([^;:]+)/);
+
+  const timezone = tzMatch
+    ? tzMatch[1]
+    : Session.getScriptTimeZone();
+
+  return Utilities.parseDate(
+    value,
+    timezone,
+    "yyyyMMdd'T'HHmmss"
+  );
+
+}
+
+```
