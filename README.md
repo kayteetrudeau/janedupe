@@ -13,17 +13,11 @@ Click "New Project" and paste this in the window:
 /*
  * MULTI-JANE TO GOOGLE CALENDAR SYNC
  *
- * Remember to sub out your ICS URL (the calendar URL you're subscribed to) for the generic line at `const JANE_ICAL_URL`, and edit the name of the worksite under the `const MARKER_PREFIX` 
+ * Remember to sub out your ICS URL (the calendar URL you're subscribed to) for the generic line under your `const JANE_ACCOUNTS`,
+and edit the name of the worksite under the "name" and "MARKER_PREFIX"
+ * Remember to add your gmail email address linked to your calendar under this: `const TARGET_CALENDAR_ID`
  *
  * Imports appointments from multiple Jane calendars into a single Google Calendar.
- * 
- * Features:
- * - Easily add as many Jane accounts as you want in the CONFIG section
- * - Uses real Jane appointment titles
- * - Updates rescheduled appointments automatically
- * - Removes cancelled appointments after 3 consecutive successful missing checks
- * - Prevents duplicate imports and respects manually deleted events
- */
 
 // ==========================================
 // CONFIGURATION: Add as many accounts as you want here!
