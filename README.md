@@ -3,6 +3,10 @@ Automatically copies subscribed Jane calendar to Google calendar so time gets bl
 
 The use case is this: I have a google calendar that syncs with jane, so anytime I put an event in that (appointment through private practice, for example) it blocks that time out in Jane. However, the inverse doesn't happen, even if you're subscribed to the Jane calendar - it just adds another calendar view to your current Google one. So you need to add things to that main Google calendar manually when you add a Jane appointment to properly block off the time. 
 
+Thanks to all my pals who've helped me test and try other things to get us to a place where multiple clinics and cancellations work (thanks Brayden, Beth, & Jo!)
+
+You will sometimes get errors emailed to you - I do every couple of days but mine're always time-based; when I go to check them, they have eventually worked out. 
+
 Don't forget that there are a few steps below the code.
 
 **The fix:**
