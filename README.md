@@ -18,35 +18,8 @@ and edit the name of the worksite under the "name" and "MARKER_PREFIX"
  * Remember to add your gmail email address linked to your calendar under this: `const TARGET_CALENDAR_ID`
  *
  * Imports appointments from multiple Jane calendars into a single Google Calendar.
-
-// ==========================================
-// CONFIGURATION: Add as many accounts as you want here!
-/*
-You'd do this by making it look like this:
-
-const JANE_ACCOUNTS = [
-  {
-    name: 'Clinic One',
-    url: 'https://...',
-    markerPrefix: 'Jane UID C1: ',
-    key: 'clinic_one'
-  },
-  {
-    name: 'Clinic Two',
-    url: 'https://...',
-    markerPrefix: 'Jane UID C2: ',
-    key: 'clinic_two'
-  },
-  {
-    name: 'Clinic Three', // <--- Just add new ones here!
-    url: 'https://...',
-    markerPrefix: 'Jane UID C3: ',
-    key: 'clinic_three'
-  }
-];
-
-And so on, depending on how many worksites you have
-*/
+ *
+ * Instructions are here: https://github.com/kayteetrudeau/janedupe/edit/main/README.md
 // ==========================================
 
 const TARGET_CALENDAR_ID = 'GOOGLE CALENDAR ACCOUNT'S EMAIL ADDRESS'; // Where all appointments should land
@@ -328,14 +301,26 @@ url: Paste your Jane iCal feed URL inside the quotation marks. (Note: You can gr
 
 markerPrefix: Give it a unique work site label (e.g., 'Clinic One: ' or 'Private Practice: '). This is what the script writes into the description to track reschedules and cancellations.
 
-If you only have one clinic, you can delete the second block in the array, or leave it and add more blocks if you have 3, 4, or more accounts:
+If you only have one clinic, you can use the code as is. If you want to add more clinics, add more blocks under `const JANE_ACCOUNTS = [` so it'll look like this:
 ```
 const JANE_ACCOUNTS = [
   {
     name: 'Clinic One',
-    url: 'https://your-clinic.janeapp.com/...',
-    markerPrefix: 'Clinic One: ',
+    url: 'https://...',
+    markerPrefix: 'Jane UID C1: ',
     key: 'clinic_one'
+  },
+  {
+    name: 'Clinic Two',
+    url: 'https://...',
+    markerPrefix: 'Jane UID C2: ',
+    key: 'clinic_two'
+  },
+  {
+    name: 'Clinic Three', // <--- Just add new ones here!
+    url: 'https://...',
+    markerPrefix: 'Jane UID C3: ',
+    key: 'clinic_three'
   }
 ];
 ```
