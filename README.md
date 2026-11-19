@@ -329,7 +329,7 @@ url: Paste your Jane iCal feed URL inside the quotation marks. (Note: You can gr
 markerPrefix: Give it a unique work site label (e.g., 'Clinic One: ' or 'Private Practice: '). This is what the script writes into the description to track reschedules and cancellations.
 
 If you only have one clinic, you can delete the second block in the array, or leave it and add more blocks if you have 3, 4, or more accounts:
-`
+```
 const JANE_ACCOUNTS = [
   {
     name: 'Clinic One',
@@ -338,14 +338,14 @@ const JANE_ACCOUNTS = [
     key: 'clinic_one'
   }
 ];
-`
+```
 4. Set up the Automatic Trigger:
 
 Click on the alarm clock icon on the left sidebar of the Apps Script editor, then click "Triggers".
 
 Click "+ Add Trigger" in the bottom right.
 
-Choose syncJaneAppointments to run, select "Time-driven", and set it to run as frequently as you like (e.g., Every 15 minutes or Every hour).
+Choose `syncJaneAppointments` to run, select "Time-driven", and set it to run as frequently as you like (e.g., Every 15 minutes or Every hour).
 
 It will prompt you to authorize the script permissions—follow the prompts to allow it to access your calendar.
 
@@ -357,4 +357,4 @@ Click the "Run" button on the top toolbar.
 
 Check the Execution Log at the bottom; if it works successfully, it will print out how many appointments it found, created, or updated!
 
-Note on Cancellations & Reschedules: Unlike older scripts, this version automatically handles changes. If an appointment is rescheduled in Jane, the script updates the time in Google Calendar. If an appointment is canceled in Jane, the script will automatically remove it from your Google Calendar after 3 consecutive successful checks (to prevent accidental deletions from brief feed glitches).
+Note on Cancellations & Reschedules: this version automatically handles changes. If an appointment is rescheduled in Jane, the script updates the time in Google Calendar. If an appointment is canceled in Jane, the script will automatically remove it from your Google Calendar after 3 consecutive successful checks (to prevent accidental deletions from brief feed glitches).
